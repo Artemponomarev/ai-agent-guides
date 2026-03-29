@@ -3,6 +3,21 @@
 > Use case: Automated sales workflow — ICP creation & filtering, pitch creation, LinkedIn automation, email outreach
 > Researched: 2026-03-29
 
+| # | Skill | Score | Security | Pipeline Stage |
+|---|-------|-------|----------|----------------|
+| 1 | **ICP Builder** | 9.5 | LOW | Define your ideal customer with weighted scoring |
+| 2 | **Prospect** (Anthropic) | 9.2 | LOW | Natural language ICP → ranked leads with contacts |
+| 3 | **B2B Sales Prospecting** | 9.0 | MEDIUM | 200M+ database, bulk list building |
+| 4 | **Lead Generation** | 8.7 | MEDIUM | Social listening for high-intent buyers |
+| 5 | **Intent Signal Aggregator** | 8.5 | LOW | Timing outreach by funding/hiring signals |
+| 6 | **Alex Hormozi Pitch** | 8.8 | LOW | $100M Offers methodology for irresistible pitches |
+| 7 | **LinkedIn Lead Gen** | 8.6 | MEDIUM | LinkedIn search + gap analysis + messaging |
+| 8 | **Draft Outreach** (Anthropic) | 9.0 | LOW | Research-then-write personalized outreach |
+| 9 | **Cold Email** | 8.8 | LOW-MED | 3 frameworks (OPPA/QVA/TIA), 35-day sequences |
+| 10 | **Sequence Load** (Anthropic) | 8.5 | LOW | Bulk-enroll leads into Apollo sequences |
+
+---
+
 ## Summary
 
 **Goal:** Build an end-to-end automated sales pipeline — from defining who to sell to, through finding and qualifying leads, to pitching and outreach at scale.
