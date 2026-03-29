@@ -1,0 +1,15 @@
+version: "3.0"
+name: "AI Agent Guides Knowledge Base"
+description: "AI guidance for agents working with the AI agent guides KB and Dora index"
+
+presets:
+  - claude
+  - cursor
+  - name: codex
+    type: markdown
+    path: AGENTS.md
+  - name: agent-guide
+    type: markdown
+    path: AI_RULES.md
+
+gitignore: true
