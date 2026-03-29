@@ -24,15 +24,98 @@ You don't need to pay anything to install skills locally.
 
 1. Go to the skill page (e.g. [sales skill](https://www.skillhub.club/skills/openclaw-skills-tmp-skill))
 2. Copy the `SKILL.md` content
-3. Save it to your agent's skills directory:
-   - **Claude Code**: `~/.claude/skills/<skill-name>/SKILL.md`
-   - **Codex CLI**: `~/.codex/skills/<skill-name>/SKILL.md`
-   - **OpenClaw**: `~/.openclaw/skills/<skill-name>/SKILL.md`
+3. Save it to your agent's skills directory (see platform setup below)
 
 ### Option 2 — CLI
 
 ```bash
 npx @skill-hub/cli install [skill-name]
+```
+
+## Platform Setup
+
+### Claude Code
+
+```bash
+# Create skills directory
+mkdir -p ~/.claude/skills/<skill-name>
+
+# Copy skill file
+cp SKILL.md ~/.claude/skills/<skill-name>/SKILL.md
+
+# Verify
+ls ~/.claude/skills/
+```
+
+Skills are auto-detected by Claude Code. Reference them by name in your sessions.
+
+**Config location:** `~/.claude/settings.json`
+
+### OpenAI Codex CLI
+
+```bash
+# Create skills directory
+mkdir -p ~/.codex/skills/<skill-name>
+
+# Copy skill file
+cp SKILL.md ~/.codex/skills/<skill-name>/SKILL.md
+
+# Alternatively, use AGENTS.md in your project root
+# Codex reads AGENTS.md for agent instructions
+cat SKILL.md >> AGENTS.md
+
+# Verify
+ls ~/.codex/skills/
+```
+
+**Config location:** `~/.codex/` or project-level `AGENTS.md`
+
+### OpenClaw
+
+```bash
+# Create skills directory
+mkdir -p ~/.openclaw/skills/<skill-name>
+
+# Copy skill file
+cp SKILL.md ~/.openclaw/skills/<skill-name>/SKILL.md
+
+# Verify
+ls ~/.openclaw/skills/
+```
+
+**Config location:** `~/.openclaw/`
+
+### Quick Install Script (all platforms at once)
+
+```bash
+# Install a skill to all three platforms
+SKILL_NAME="my-skill"
+for dir in ~/.claude/skills ~/.codex/skills ~/.openclaw/skills; do
+  mkdir -p "$dir/$SKILL_NAME"
+  cp SKILL.md "$dir/$SKILL_NAME/SKILL.md"
+done
+echo "Installed $SKILL_NAME to Claude, Codex, and OpenClaw"
+```
+
+## Security Checklist (before installing any skill)
+
+Run this checklist on every `SKILL.md` before installing:
+
+| Check | What to look for | Risk |
+|-------|------------------|------|
+| **Prompt injection** | Instructions like "ignore previous instructions", "you are now", "forget your rules" | Critical |
+| **Data exfiltration** | Commands that curl/wget/fetch to external URLs, or instructions to send file contents somewhere | Critical |
+| **File system access** | Instructions to read ~/.ssh, ~/.env, credentials, tokens, API keys | High |
+| **Hidden instructions** | Base64 encoded text, zero-width characters, HTML comments with instructions | High |
+| **Scope creep** | Skill claims to do X but instructions include unrelated Y (e.g. a "sales" skill that modifies git config) | Medium |
+| **Excessive permissions** | Instructions asking to disable safety, run as root, or bypass confirmation prompts | High |
+| **External dependencies** | Requires installing unknown npm packages, pip packages, or binaries — verify they exist and are legit | Medium |
+| **API key harvesting** | Asks you to paste API keys into the skill file itself rather than using env vars | Medium |
+
+**Quick audit command:**
+```bash
+# Scan a SKILL.md for suspicious patterns before installing
+grep -iE "(ignore previous|forget your|curl |wget |fetch\(|\.ssh|\.env|credentials|api.key|base64|eval\(|exec\(|rm -rf|sudo )" SKILL.md
 ```
 
 ## Safety Considerations
