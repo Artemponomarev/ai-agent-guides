@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kernelics Email Outreach Automation — Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; overflow-x: hidden; }
+
+  /* Header */
+  .header { padding: 30px 40px; border-bottom: 1px solid #1a1a2e; }
+  .header h1 { font-size: 24px; font-weight: 600; color: #fff; }
+  .header p { font-size: 14px; color: #888; margin-top: 4px; }
+
+  /* Tab Navigation */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid #1a1a2e; padding: 0 40px; background: #0d0d14; }
+  .tab { padding: 14px 24px; cursor: pointer; font-size: 13px; font-weight: 500; color: #666; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .tab:hover { color: #aaa; }
+  .tab.active { color: #7c6ef0; border-bottom-color: #7c6ef0; }
+
+  /* Content */
+  .content { padding: 40px; display: none; }
+  .content.active { display: block; }
+
+  /* Diagram Container */
+  .diagram { position: relative; width: 100%; min-height: 700px; }
+
+  /* Nodes */
+  .node { position: absolute; border-radius: 12px; padding: 16px 20px; cursor: pointer; transition: all 0.3s; z-index: 2; min-width: 180px; }
+  .node:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+  .node.expanded .node-details { display: block; }
+  .node-icon { font-size: 20px; margin-bottom: 6px; }
+  .node-title { font-size: 14px; font-weight: 600; color: #fff; }
+  .node-subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+  .node-details { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; line-height: 1.6; color: #aaa; }
+  .node-details li { margin-left: 14px; margin-bottom: 4px; }
+  .node-badge { position: absolute; top: -8px; right: -8px; background: #7c6ef0; color: #fff; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+
+  /* Node colors */
+  .node-source { background: #1a1a2e; border: 1px solid #2a2a4e; }
+  .node-hub { background: #1e1e3a; border: 2px solid #ff7a45; box-shadow: 0 0 20px rgba(255,122,69,0.15); }
+  .node-enrich { background: #1a2e1a; border: 1px solid #2e4a2e; }
+  .node-outreach { background: #2e1a1a; border: 1px solid #4a2e2e; }
+  .node-orchestrator { background: #1a1a3e; border: 2px solid #7c6ef0; box-shadow: 0 0 30px rgba(124,110,240,0.2); min-width: 240px; }
+  .node-action { background: #2e2e1a; border: 1px solid #4a4a2e; }
+
+  /* SVG Arrows */
+  svg.arrows { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+  .arrow-path { fill: none; stroke-width: 2; opacity: 0.5; }
+  .arrow-path.active { opacity: 1; stroke-width: 2.5; }
+  .arrow-label { font-size: 10px; fill: #666; font-family: -apple-system, sans-serif; }
+
+  /* Legend */
+  .legend { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 30px; padding: 16px 20px; background: #0d0d14; border-radius: 10px; border: 1px solid #1a1a2e; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* Flow steps (tab 2) */
+  .flow-container { max-width: 900px; }
+  .flow-phase { margin-bottom: 40px; }
+  .flow-phase-title { font-size: 16px; font-weight: 600; color: #7c6ef0; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .flow-phase-num { background: #7c6ef0; color: #fff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .flow-step { background: #0d0d14; border: 1px solid #1a1a2e; border-radius: 10px; padding: 16px 20px; margin-bottom: 10px; margin-left: 38px; }
+  .flow-step-header { display: flex; justify-content: space-between; align-items: center; }
+  .flow-step-title { font-size: 13px; font-weight: 500; color: #e0e0e0; }
+  .flow-step-tool { font-size: 11px; padding: 3px 10px; border-radius: 12px; font-weight: 500; }
+  .tool-hubspot { background: #2a1a0a; color: #ff7a45; }
+  .tool-apollo { background: #1a2a0a; color: #7aff45; }
+  .tool-openclaw { background: #1a1a3a; color: #7c6ef0; }
+  .tool-lemlist { background: #2a0a2a; color: #ff45d4; }
+  .tool-linkedin { background: #0a1a2a; color: #45a0ff; }
+  .flow-step-desc { font-size: 12px; color: #666; margin-top: 6px; }
+  .flow-arrow { margin-left: 52px; color: #333; font-size: 18px; margin-bottom: 10px; }
+
+  /* Sync matrix (tab 3) */
+  .matrix { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  .matrix th, .matrix td { padding: 12px 16px; text-align: left; border: 1px solid #1a1a2e; font-size: 13px; }
+  .matrix th { background: #0d0d14; color: #7c6ef0; font-weight: 600; }
+  .matrix td { color: #aaa; }
+  .matrix tr:hover td { background: #0d0d14; }
+  .sync-dir { color: #7c6ef0; font-weight: 600; }
+  .sync-yes { color: #4ade80; }
+  .sync-no { color: #666; }
+  .sync-openclaw { color: #7c6ef0; font-weight: 500; }
+
+  /* API limits (tab 4) */
+  .limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+  .limit-card { background: #0d0d14; border: 1px solid #1a1a2e; border-radius: 10px; padding: 20px; }
+  .limit-card h3 { font-size: 14px; color: #fff; margin-bottom: 12px; }
+  .limit-item { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; border-bottom: 1px solid #111; }
+  .limit-label { color: #888; }
+  .limit-value { color: #e0e0e0; font-weight: 500; }
+  .limit-warn { color: #fbbf24; }
+
+  /* Section headers */
+  .section-title { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+  .section-desc { font-size: 13px; color: #666; margin-bottom: 24px; }
+
+  /* Toggle */
+  .toggle-group { display: flex; gap: 8px; margin-bottom: 20px; }
+  .toggle-btn { padding: 8px 16px; border-radius: 8px; border: 1px solid #1a1a2e; background: #0d0d14; color: #888; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+  .toggle-btn.active { border-color: #7c6ef0; color: #7c6ef0; background: #1a1a3a; }
+
+  /* Tooltip */
+  .tooltip { position: absolute; background: #1a1a2e; border: 1px solid #2a2a4e; padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #ccc; max-width: 250px; z-index: 100; pointer-events: none; display: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Kernelics Email Outreach Automation</h1>
+  <p>HubSpot (source of truth) + Apollo + Lemlist + Sales Navigator + OpenClaw orchestrator</p>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('overview')">System Overview</div>
+  <div class="tab" onclick="showTab('flows')">Sync Flows</div>
+  <div class="tab" onclick="showTab('matrix')">Sync Matrix</div>
+  <div class="tab" onclick="showTab('limits')">API Limits & Plans</div>
+  <div class="tab" onclick="showTab('openclaw')">OpenClaw Jobs</div>
+</div>
+
+<!-- TAB 1: SYSTEM OVERVIEW -->
+<div class="content active" id="tab-overview">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#ff7a45"></div> Source of Truth (HubSpot)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2e4a2e"></div> Lead Sources</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4a2e2e"></div> Outreach Channels</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7c6ef0"></div> Orchestrator (OpenClaw)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4a4a2e"></div> Actions / Outcomes</div>
+  </div>
+
+  <p style="font-size:12px; color:#555; margin-bottom:20px;">Click any node to expand details</p>
+
+  <div class="diagram" id="main-diagram" style="min-height:900px;">
+    <svg class="arrows" id="arrows-svg"></svg>
+
+    <!-- LEAD SOURCES -->
+    <div class="node node-source" id="n-crunchbase" style="top:30px; left:60px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F4CA;</div>
+      <div class="node-title">CrunchBase</div>
+      <div class="node-subtitle">Company accounts</div>
+      <div class="node-details">
+        <ul>
+          <li>Company funding, industry, size</li>
+          <li>Zapier integration to HubSpot</li>
+          <li>Automatic account creation</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="node node-source" id="n-apollo-prospect" style="top:30px; left:340px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F680;</div>
+      <div class="node-title">Apollo Prospecting</div>
+      <div class="node-subtitle">New lead lists + intent signals</div>
+      <div class="node-details">
+        <ul>
+          <li>Buying intent signals</li>
+          <li>Custom lead lists (exclude HubSpot dupes)</li>
+          <li>Firmographic filters</li>
+          <li>New leads synced to HubSpot</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="node node-source" id="n-linkedin-src" style="top:30px; left:640px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F465;</div>
+      <div class="node-title">Sales Navigator</div>
+      <div class="node-subtitle">LinkedIn lead lists</div>
+      <div class="node-details">
+        <ul>
+          <li>Saved lead lists</li>
+          <li>InMail tracking</li>
+          <li>Connection request status</li>
+          <li>No native API — OpenClaw bridges via scraping/export</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- HUBSPOT — CENTER -->
+    <div class="node node-hub" id="n-hubspot" style="top:220px; left:310px;" onclick="toggleNode(this)">
+      <div class="node-badge">SOURCE OF TRUTH</div>
+      <div class="node-icon">&#x1F3E0;</div>
+      <div class="node-title">HubSpot CRM</div>
+      <div class="node-subtitle">Starter Plan — contacts, deals, tasks</div>
+      <div class="node-details">
+        <ul>
+          <li><strong>Contacts:</strong> all leads from all sources</li>
+          <li><strong>Deals:</strong> pipeline stages per lead</li>
+          <li><strong>Tasks:</strong> assigned follow-ups</li>
+          <li><strong>Custom properties:</strong></li>
+          <li style="margin-left:14px;">outreach_channel (email/linkedin/both)</li>
+          <li style="margin-left:14px;">sequence_step (1, 2, 3...)</li>
+          <li style="margin-left:14px;">reply_status (no_reply/replied/meeting_booked)</li>
+          <li style="margin-left:14px;">active_tools (apollo/lemlist/linkedin)</li>
+          <li style="margin-left:14px;">last_sync_timestamp</li>
+          <li><strong>API:</strong> full REST access on Starter</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ENRICHMENT -->
+    <div class="node node-enrich" id="n-apollo-enrich" style="top:220px; left:660px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x2728;</div>
+      <div class="node-title">Apollo Enrichment</div>
+      <div class="node-subtitle">Emails, phones, company data</div>
+      <div class="node-details">
+        <ul>
+          <li>Auto-enrich contacts from HubSpot</li>
+          <li>Verified emails + phone numbers</li>
+          <li>Job titles, company size, tech stack</li>
+          <li>Enriched data pushed back to HubSpot</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- OUTREACH CHANNELS -->
+    <div class="node node-outreach" id="n-apollo-seq" style="top:430px; left:60px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F4E7;</div>
+      <div class="node-title">Apollo Sequences</div>
+      <div class="node-subtitle">Email automation</div>
+      <div class="node-details">
+        <ul>
+          <li>Multi-step email sequences</li>
+          <li>Auto-sends on schedule</li>
+          <li>Reply detection stops sequence</li>
+          <li>Open/click tracking</li>
+          <li><strong>API events OpenClaw monitors:</strong></li>
+          <li style="margin-left:14px;">email_opened</li>
+          <li style="margin-left:14px;">email_replied</li>
+          <li style="margin-left:14px;">email_bounced</li>
+          <li style="margin-left:14px;">sequence_step_completed</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="node node-outreach" id="n-lemlist" style="top:430px; left:340px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F48C;</div>
+      <div class="node-title">Lemlist</div>
+      <div class="node-subtitle">Multichannel sequences</div>
+      <div class="node-details">
+        <ul>
+          <li>Email + LinkedIn combined sequences</li>
+          <li>Personalized images/videos</li>
+          <li>Reply detection</li>
+          <li><strong>API events OpenClaw monitors:</strong></li>
+          <li style="margin-left:14px;">email_sent / email_replied</li>
+          <li style="margin-left:14px;">linkedin_invite_sent</li>
+          <li style="margin-left:14px;">linkedin_message_sent</li>
+          <li style="margin-left:14px;">lead_interested / lead_not_interested</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="node node-outreach" id="n-linkedin-out" style="top:430px; left:640px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F4AC;</div>
+      <div class="node-title">LinkedIn Outreach</div>
+      <div class="node-subtitle">Sales Navigator DMs + InMails</div>
+      <div class="node-details">
+        <ul>
+          <li>Connection requests</li>
+          <li>InMail messages</li>
+          <li>DM conversations</li>
+          <li><strong>No official API</strong> — OpenClaw tracks via:</li>
+          <li style="margin-left:14px;">Manual status updates</li>
+          <li style="margin-left:14px;">CSV exports from Sales Nav</li>
+          <li style="margin-left:14px;">Browser automation (optional)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- OPENCLAW ORCHESTRATOR -->
+    <div class="node node-orchestrator" id="n-openclaw" style="top:620px; left:260px;" onclick="toggleNode(this)">
+      <div class="node-badge">ORCHESTRATOR</div>
+      <div class="node-icon">&#x1F99E;</div>
+      <div class="node-title">OpenClaw Bot</div>
+      <div class="node-subtitle">Sync engine + cross-channel coordinator</div>
+      <div class="node-details">
+        <ul>
+          <li><strong>Job 1: Status Sync</strong></li>
+          <li style="margin-left:14px;">Poll Apollo/Lemlist for sequence events</li>
+          <li style="margin-left:14px;">Update HubSpot contact properties</li>
+          <li style="margin-left:14px;">Update deal stages</li>
+          <li><strong>Job 2: Cross-Channel Coordination</strong></li>
+          <li style="margin-left:14px;">Reply on email? Pause LinkedIn sequence</li>
+          <li style="margin-left:14px;">Reply on LinkedIn? Pause email sequences</li>
+          <li style="margin-left:14px;">Remove from all sequences on booking</li>
+          <li><strong>Job 3: Task Creation</strong></li>
+          <li style="margin-left:14px;">Reply detected &rarr; create HubSpot task</li>
+          <li style="margin-left:14px;">Assign to you for manual follow-up</li>
+          <li><strong>Job 4: Dedup Guard</strong></li>
+          <li style="margin-left:14px;">Prevent same lead in Apollo + Lemlist</li>
+          <li style="margin-left:14px;">Cross-reference by email domain</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="node node-action" id="n-reply" style="top:830px; left:100px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F4EC;</div>
+      <div class="node-title">Reply Detected</div>
+      <div class="node-subtitle">Any channel</div>
+      <div class="node-details">
+        <ul>
+          <li>OpenClaw detects reply from Apollo, Lemlist, or LinkedIn</li>
+          <li>Pauses all active sequences for this lead</li>
+          <li>Updates HubSpot: reply_status = "replied"</li>
+          <li>Creates HubSpot task: "Follow up manually"</li>
+          <li>Moves deal to "Engaged" stage</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="node node-action" id="n-manual" style="top:830px; left:400px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F9D1;</div>
+      <div class="node-title">Manual Follow-up</div>
+      <div class="node-subtitle">You handle personally</div>
+      <div class="node-details">
+        <ul>
+          <li>HubSpot task assigned to you</li>
+          <li>Full context: which channel, which step, what they said</li>
+          <li>You reply manually (email or LinkedIn)</li>
+          <li>Update deal stage based on outcome</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="node node-action" id="n-booked" style="top:830px; left:680px;" onclick="toggleNode(this)">
+      <div class="node-icon">&#x1F4C5;</div>
+      <div class="node-title">Meeting Booked</div>
+      <div class="node-subtitle">Pipeline advancement</div>
+      <div class="node-details">
+        <ul>
+          <li>Remove from ALL sequences everywhere</li>
+          <li>HubSpot deal &rarr; "Meeting Booked" stage</li>
+          <li>Clear active_tools property</li>
+          <li>Create prep task in HubSpot</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB 2: SYNC FLOWS -->
+<div class="content" id="tab-flows">
+  <div class="section-title">Sync Flows — What OpenClaw Does</div>
+  <div class="section-desc">Each flow runs on a schedule (configurable). Click tool badges to filter.</div>
+
+  <div class="toggle-group">
+    <div class="toggle-btn active" onclick="filterFlows('all', this)">All Flows</div>
+    <div class="toggle-btn" onclick="filterFlows('sync', this)">Status Sync</div>
+    <div class="toggle-btn" onclick="filterFlows('coord', this)">Cross-Channel</div>
+    <div class="toggle-btn" onclick="filterFlows('task', this)">Task Creation</div>
+    <div class="toggle-btn" onclick="filterFlows('dedup', this)">Dedup</div>
+  </div>
+
+  <div class="flow-container">
+
+    <!-- FLOW 1: Apollo → HubSpot sync -->
+    <div class="flow-phase" data-flow="sync">
+      <div class="flow-phase-title"><div class="flow-phase-num">1</div> Apollo → HubSpot Status Sync</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Poll Apollo API for sequence events</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">GET /v1/emailer_campaigns/{id}/emailer_steps — check which leads progressed, opened, replied, bounced</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Match leads by email to HubSpot contacts</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">Search HubSpot contacts by email — POST /crm/v3/objects/contacts/search</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Update HubSpot contact properties</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">PATCH /crm/v3/objects/contacts/{id} — set sequence_step, reply_status, active_tools, last_sync_timestamp</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Update deal stage if status changed</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">PATCH /crm/v3/objects/deals/{id} — move to Contacted / Engaged / Replied based on sequence events</div>
+      </div>
+    </div>
+
+    <!-- FLOW 2: Lemlist → HubSpot sync -->
+    <div class="flow-phase" data-flow="sync">
+      <div class="flow-phase-title"><div class="flow-phase-num">2</div> Lemlist → HubSpot Status Sync</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Poll Lemlist API for campaign activity</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">GET /api/campaigns/{id}/export — get lead statuses, email events, LinkedIn actions</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Map Lemlist statuses to HubSpot properties</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">interested → replied | notInterested → closed_lost | emailsSent → sequence_step N</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Batch update HubSpot contacts</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">POST /crm/v3/objects/contacts/batch/update — up to 100 contacts per batch</div>
+      </div>
+    </div>
+
+    <!-- FLOW 3: Cross-channel coordination -->
+    <div class="flow-phase" data-flow="coord">
+      <div class="flow-phase-title"><div class="flow-phase-num">3</div> Cross-Channel Reply Coordination</div>
+      <div class="flow-step" style="border-left: 3px solid #ff4545;">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Reply detected on ANY channel</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">Trigger: Apollo reply event OR Lemlist "interested" status OR LinkedIn reply (manual flag)</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Check: is this lead active in other tools?</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">Read active_tools property — if "apollo,lemlist" then need to pause both</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Pause/remove from Apollo sequence</span>
+          <span class="flow-step-tool tool-apollo">Apollo</span>
+        </div>
+        <div class="flow-step-desc">POST /v1/emailer_campaigns/{id}/remove_contact_ids — removes lead from active sequence</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Pause/remove from Lemlist campaign</span>
+          <span class="flow-step-tool tool-lemlist">Lemlist</span>
+        </div>
+        <div class="flow-step-desc">DELETE /api/campaigns/{id}/leads/{email} — removes lead from campaign</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Update HubSpot: clear active sequences</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">Set reply_status = "replied", active_tools = "", outreach_channel = reply source</div>
+      </div>
+    </div>
+
+    <!-- FLOW 4: Task creation -->
+    <div class="flow-phase" data-flow="task">
+      <div class="flow-phase-title"><div class="flow-phase-num">4</div> HubSpot Task Creation on Reply</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Create follow-up task</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">POST /crm/v3/objects/tasks — subject: "Reply from {name} via {channel}", assigned to you, due: today</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Associate task with contact + deal</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">PUT /crm/v3/objects/tasks/{id}/associations/contacts/{contactId} — links task to the lead</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Add note with reply context</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">POST /crm/v3/objects/notes — include: reply channel, sequence step #, reply content snippet, outreach history summary</div>
+      </div>
+    </div>
+
+    <!-- FLOW 5: Dedup guard -->
+    <div class="flow-phase" data-flow="dedup">
+      <div class="flow-phase-title"><div class="flow-phase-num">5</div> Cross-Platform Dedup Guard</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Before adding lead to any sequence</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">Check HubSpot: is this email already in active_tools? Is reply_status != "no_reply"?</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">If already active elsewhere → skip or flag</span>
+          <span class="flow-step-tool tool-openclaw">OpenClaw</span>
+        </div>
+        <div class="flow-step-desc">Don't add to new sequence. Log warning. Optional: create HubSpot note "Skipped: already in {tool} sequence"</div>
+      </div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">If clean → approve and track</span>
+          <span class="flow-step-tool tool-hubspot">HubSpot</span>
+        </div>
+        <div class="flow-step-desc">Update active_tools = "{new_tool}", sequence_step = 1, outreach_channel = "{channel}"</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB 3: SYNC MATRIX -->
+<div class="content" id="tab-matrix">
+  <div class="section-title">Sync Matrix — What Syncs Where</div>
+  <div class="section-desc">Every row is a data point. Shows direction of sync and which tool handles it.</div>
+
+  <table class="matrix">
+    <thead>
+      <tr>
+        <th>Data Point</th>
+        <th>Source</th>
+        <th>Destination</th>
+        <th>Direction</th>
+        <th>Synced By</th>
+        <th>Frequency</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Company accounts</td><td>CrunchBase</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td>Zapier (existing)</td><td>Real-time</td></tr>
+      <tr><td>Contacts (new leads)</td><td>Apollo</td><td>HubSpot</td><td class="sync-dir">&harr;</td><td class="sync-openclaw">OpenClaw</td><td>Every 15 min</td></tr>
+      <tr><td>Contact enrichment data</td><td>Apollo</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td>Apollo native + <span class="sync-openclaw">OpenClaw</span></td><td>On enrichment</td></tr>
+      <tr><td>Email sequence step #</td><td>Apollo</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Every 15 min</td></tr>
+      <tr><td>Email open/click events</td><td>Apollo</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Every 15 min</td></tr>
+      <tr><td>Email reply status</td><td>Apollo</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Every 5 min</td></tr>
+      <tr><td>Lemlist campaign status</td><td>Lemlist</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Every 15 min</td></tr>
+      <tr><td>Lemlist reply/interested</td><td>Lemlist</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Every 5 min</td></tr>
+      <tr><td>LinkedIn outreach status</td><td>Sales Navigator</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Manual/CSV import</td></tr>
+      <tr><td>Deal stage updates</td><td>HubSpot</td><td>—</td><td class="sync-dir">internal</td><td class="sync-openclaw">OpenClaw</td><td>On event</td></tr>
+      <tr><td>Task creation (on reply)</td><td>OpenClaw</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>On event</td></tr>
+      <tr><td>Pause sequence (cross-channel)</td><td>OpenClaw</td><td>Apollo / Lemlist</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>On reply event</td></tr>
+      <tr><td>Dedup check</td><td>HubSpot</td><td>Apollo / Lemlist</td><td class="sync-dir">&larr;</td><td class="sync-openclaw">OpenClaw</td><td>Before sequence add</td></tr>
+      <tr><td>Buying intent signals</td><td>Apollo</td><td>HubSpot</td><td class="sync-dir">&rarr;</td><td class="sync-openclaw">OpenClaw</td><td>Daily</td></tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top:30px;">
+    <div class="section-title">Recommended HubSpot Custom Properties</div>
+    <div class="section-desc">Create these in HubSpot Settings → Properties → Contact properties</div>
+    <table class="matrix">
+      <thead>
+        <tr><th>Property Name</th><th>Type</th><th>Options / Format</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>outreach_channel</td><td>Dropdown</td><td>email | linkedin | both | none</td><td>Which channels are active</td></tr>
+        <tr><td>sequence_step</td><td>Number</td><td>1, 2, 3...</td><td>Current step in active sequence</td></tr>
+        <tr><td>reply_status</td><td>Dropdown</td><td>no_reply | replied | meeting_booked | not_interested</td><td>Latest reply state</td></tr>
+        <tr><td>active_tools</td><td>Text</td><td>apollo | lemlist | linkedin | comma-separated</td><td>Which tools have active sequences</td></tr>
+        <tr><td>last_sync_timestamp</td><td>DateTime</td><td>ISO 8601</td><td>Last OpenClaw sync time</td></tr>
+        <tr><td>reply_channel</td><td>Dropdown</td><td>apollo_email | lemlist_email | linkedin_dm | inmail</td><td>Where the reply came from</td></tr>
+        <tr><td>apollo_campaign_id</td><td>Text</td><td>Apollo campaign ID</td><td>Link back to Apollo sequence</td></tr>
+        <tr><td>lemlist_campaign_id</td><td>Text</td><td>Lemlist campaign ID</td><td>Link back to Lemlist campaign</td></tr>
+        <tr><td>intent_score</td><td>Number</td><td>1-100</td><td>Apollo buying intent score</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB 4: API LIMITS -->
+<div class="content" id="tab-limits">
+  <div class="section-title">API Limits & Plan Constraints</div>
+  <div class="section-desc">What you can and can't do on your current plans</div>
+
+  <div class="limits-grid">
+    <div class="limit-card" style="border-top: 3px solid #ff7a45;">
+      <h3>HubSpot Starter</h3>
+      <div class="limit-item"><span class="limit-label">API rate limit</span><span class="limit-value">100 requests / 10 sec</span></div>
+      <div class="limit-item"><span class="limit-label">Daily API limit</span><span class="limit-value">250,000 requests</span></div>
+      <div class="limit-item"><span class="limit-label">Batch operations</span><span class="limit-value">100 records per batch</span></div>
+      <div class="limit-item"><span class="limit-label">Custom properties</span><span class="limit-value">1,000 per object</span></div>
+      <div class="limit-item"><span class="limit-label">Workflows</span><span class="limit-value limit-warn">NOT available (Pro+)</span></div>
+      <div class="limit-item"><span class="limit-label">Webhooks</span><span class="limit-value limit-warn">Limited (no workflow triggers)</span></div>
+      <div class="limit-item"><span class="limit-label">Contacts</span><span class="limit-value">1,000 marketing (unlimited non-marketing)</span></div>
+      <div class="limit-item"><span class="limit-label">Tasks</span><span class="limit-value">Unlimited</span></div>
+      <div class="limit-item"><span class="limit-label">Deals</span><span class="limit-value">Unlimited</span></div>
+    </div>
+
+    <div class="limit-card" style="border-top: 3px solid #7aff45;">
+      <h3>Apollo Basic</h3>
+      <div class="limit-item"><span class="limit-label">API rate limit</span><span class="limit-value">5 requests / min (Basic)</span></div>
+      <div class="limit-item"><span class="limit-label">Daily API limit</span><span class="limit-value limit-warn">Check plan — Basic is limited</span></div>
+      <div class="limit-item"><span class="limit-label">Email credits</span><span class="limit-value">Varies by plan</span></div>
+      <div class="limit-item"><span class="limit-label">Sequences</span><span class="limit-value">Available</span></div>
+      <div class="limit-item"><span class="limit-label">Sequence API</span><span class="limit-value">Read + add/remove contacts</span></div>
+      <div class="limit-item"><span class="limit-label">Enrichment API</span><span class="limit-value">Available (costs credits)</span></div>
+      <div class="limit-item"><span class="limit-label">Webhooks</span><span class="limit-value limit-warn">NOT available (requires Pro)</span></div>
+      <div class="limit-item"><span class="limit-label">Buying intent</span><span class="limit-value">Available</span></div>
+    </div>
+
+    <div class="limit-card" style="border-top: 3px solid #ff45d4;">
+      <h3>Lemlist</h3>
+      <div class="limit-item"><span class="limit-label">API rate limit</span><span class="limit-value">10 requests / sec</span></div>
+      <div class="limit-item"><span class="limit-label">Campaign API</span><span class="limit-value">Full CRUD</span></div>
+      <div class="limit-item"><span class="limit-label">Lead management</span><span class="limit-value">Add/remove/update leads</span></div>
+      <div class="limit-item"><span class="limit-label">Activity export</span><span class="limit-value">Full campaign export</span></div>
+      <div class="limit-item"><span class="limit-label">Webhooks</span><span class="limit-value">Available on paid plans</span></div>
+      <div class="limit-item"><span class="limit-label">Multichannel</span><span class="limit-value">Email + LinkedIn (Multichannel Expert)</span></div>
+    </div>
+
+    <div class="limit-card" style="border-top: 3px solid #45a0ff;">
+      <h3>Sales Navigator</h3>
+      <div class="limit-item"><span class="limit-label">Official API</span><span class="limit-value limit-warn">No public API</span></div>
+      <div class="limit-item"><span class="limit-label">Data export</span><span class="limit-value">CSV export (manual)</span></div>
+      <div class="limit-item"><span class="limit-label">CRM sync</span><span class="limit-value limit-warn">Native HubSpot sync (Pro+)</span></div>
+      <div class="limit-item"><span class="limit-label">Workaround</span><span class="limit-value">CSV import + OpenClaw processing</span></div>
+      <div class="limit-item"><span class="limit-label">InMail tracking</span><span class="limit-value">Manual status updates only</span></div>
+    </div>
+
+    <div class="limit-card" style="border-top: 3px solid #7c6ef0;">
+      <h3>OpenClaw (your bot)</h3>
+      <div class="limit-item"><span class="limit-label">Scheduling</span><span class="limit-value">Cron / SoulFlow</span></div>
+      <div class="limit-item"><span class="limit-label">Sync frequency</span><span class="limit-value">Recommended: 5-15 min</span></div>
+      <div class="limit-item"><span class="limit-label">Apollo bottleneck</span><span class="limit-value limit-warn">5 req/min on Basic = ~300/hr</span></div>
+      <div class="limit-item"><span class="limit-label">HubSpot bottleneck</span><span class="limit-value">Not a problem (250k/day)</span></div>
+      <div class="limit-item"><span class="limit-label">Lemlist bottleneck</span><span class="limit-value">Not a problem (10/sec)</span></div>
+      <div class="limit-item"><span class="limit-label">Estimated contacts/sync</span><span class="limit-value">~50-100 per cycle (Apollo limited)</span></div>
+    </div>
+  </div>
+
+  <div style="margin-top:30px; padding:20px; background:#1a1a0a; border:1px solid #3a3a1a; border-radius:10px;">
+    <h3 style="color:#fbbf24; font-size:14px; margin-bottom:10px;">Key Bottleneck: Apollo Basic API Rate Limit</h3>
+    <p style="font-size:13px; color:#aaa; line-height:1.6;">
+      Apollo Basic plan limits you to <strong>5 API requests per minute</strong>. This means your OpenClaw sync cycles need to be efficient:
+      batch where possible, cache Apollo data locally, and prioritize reply-detection polls over status syncs.
+      If you scale beyond ~500 active leads, consider upgrading Apollo to Professional for higher rate limits and webhook support
+      (which would let you switch from polling to push-based sync).
+    </p>
+  </div>
+</div>
+
+<!-- TAB 5: OPENCLAW JOBS -->
+<div class="content" id="tab-openclaw">
+  <div class="section-title">OpenClaw Bot — Job Definitions</div>
+  <div class="section-desc">Each job is a standalone OpenClaw skill/task that runs on a schedule</div>
+
+  <div class="flow-container">
+    <div class="flow-phase">
+      <div class="flow-phase-title"><div class="flow-phase-num" style="background:#4ade80;">A</div> apollo-hubspot-sync</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Schedule: Every 15 minutes</span>
+          <span class="flow-step-tool tool-openclaw">SoulFlow cron</span>
+        </div>
+        <div class="flow-step-desc">
+          <strong>Steps:</strong><br>
+          1. GET Apollo sequences → list active contacts per sequence<br>
+          2. For each contact: get current step, open/reply/bounce status<br>
+          3. Match to HubSpot contact by email<br>
+          4. Batch-update HubSpot properties (sequence_step, reply_status, active_tools)<br>
+          5. If reply detected → trigger Job C (cross-channel coordination)<br>
+          <br>
+          <strong>API calls per cycle:</strong> ~2-3 Apollo calls + 1-2 HubSpot batch calls<br>
+          <strong>Handles:</strong> Up to 100 contacts per batch (HubSpot limit)
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-phase">
+      <div class="flow-phase-title"><div class="flow-phase-num" style="background:#f472b6;">B</div> lemlist-hubspot-sync</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Schedule: Every 15 minutes</span>
+          <span class="flow-step-tool tool-openclaw">SoulFlow cron</span>
+        </div>
+        <div class="flow-step-desc">
+          <strong>Steps:</strong><br>
+          1. GET Lemlist campaign exports → lead statuses<br>
+          2. Map statuses: emailsSent/emailsOpened/emailsReplied/interested/notInterested<br>
+          3. Match to HubSpot contact by email<br>
+          4. Batch-update HubSpot (same properties as Job A)<br>
+          5. If interested/replied → trigger Job C<br>
+          <br>
+          <strong>API calls per cycle:</strong> 1 Lemlist export call + 1-2 HubSpot batch calls<br>
+          <strong>Note:</strong> Lemlist has webhooks — can switch to push-based later
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-phase">
+      <div class="flow-phase-title"><div class="flow-phase-num" style="background:#fb923c;">C</div> cross-channel-coordinator</div>
+      <div class="flow-step" style="border-left: 3px solid #ff4545;">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Trigger: Called by Job A or B when reply detected</span>
+          <span class="flow-step-tool tool-openclaw">SoulFlow event</span>
+        </div>
+        <div class="flow-step-desc">
+          <strong>Steps:</strong><br>
+          1. Read HubSpot contact → get active_tools list<br>
+          2. For each active tool (except the one that got the reply):<br>
+          &nbsp;&nbsp;— Apollo: POST remove_contact_ids from sequence<br>
+          &nbsp;&nbsp;— Lemlist: DELETE lead from campaign<br>
+          &nbsp;&nbsp;— LinkedIn: flag for manual pause (no API)<br>
+          3. Update HubSpot: active_tools = "", reply_status = "replied"<br>
+          4. Trigger Job D (task creation)<br>
+          <br>
+          <strong>Critical:</strong> This prevents the "already in contact but still getting automated emails" problem
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-phase">
+      <div class="flow-phase-title"><div class="flow-phase-num" style="background:#60a5fa;">D</div> hubspot-task-creator</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Trigger: Called by Job C after cross-channel cleanup</span>
+          <span class="flow-step-tool tool-openclaw">SoulFlow event</span>
+        </div>
+        <div class="flow-step-desc">
+          <strong>Steps:</strong><br>
+          1. Create HubSpot task:<br>
+          &nbsp;&nbsp;— Subject: "Reply from {firstName} {lastName} via {channel}"<br>
+          &nbsp;&nbsp;— Body: sequence step #, reply snippet, outreach history<br>
+          &nbsp;&nbsp;— Due: today, assigned to you<br>
+          2. Associate task with contact + deal<br>
+          3. Create note on contact with full context<br>
+          4. Move deal to "Engaged" stage<br>
+          <br>
+          <strong>Result:</strong> You see the task in HubSpot → handle the reply manually
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-phase">
+      <div class="flow-phase-title"><div class="flow-phase-num" style="background:#a78bfa;">E</div> dedup-guard</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Trigger: Before any lead is added to a new sequence</span>
+          <span class="flow-step-tool tool-openclaw">SoulFlow pre-hook</span>
+        </div>
+        <div class="flow-step-desc">
+          <strong>Steps:</strong><br>
+          1. Query HubSpot: does this email exist?<br>
+          2. If exists: check active_tools and reply_status<br>
+          3. If already in active sequence elsewhere → BLOCK + log<br>
+          4. If already replied → BLOCK + log<br>
+          5. If clean → APPROVE, update active_tools in HubSpot<br>
+          <br>
+          <strong>Prevents:</strong> Same lead getting emails from Apollo AND Lemlist simultaneously
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-phase">
+      <div class="flow-phase-title"><div class="flow-phase-num" style="background:#34d399;">F</div> linkedin-manual-sync</div>
+      <div class="flow-step">
+        <div class="flow-step-header">
+          <span class="flow-step-title">Schedule: Daily (or on-demand)</span>
+          <span class="flow-step-tool tool-openclaw">SoulFlow cron</span>
+        </div>
+        <div class="flow-step-desc">
+          <strong>Steps:</strong><br>
+          1. Read Sales Navigator CSV export (you export manually or semi-auto)<br>
+          2. Parse: connection status, InMail status, DM replies<br>
+          3. Match to HubSpot contacts by name + company (no email in LinkedIn exports)<br>
+          4. Update HubSpot: outreach_channel = "both", LinkedIn status in notes<br>
+          5. If LinkedIn reply detected → trigger Job C<br>
+          <br>
+          <strong>Limitation:</strong> No Sales Navigator API — this is the least automated part.<br>
+          <strong>Future upgrade:</strong> Lemlist Multichannel Expert can automate LinkedIn steps
+          and feed back to OpenClaw via Lemlist API instead.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// Tab switching
+function showTab(id) {
+  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+  if (id === 'overview') setTimeout(drawArrows, 50);
+}
+
+// Node expand/collapse
+function toggleNode(el) {
+  el.classList.toggle('expanded');
+}
+
+// Flow filter
+function filterFlows(type, btn) {
+  document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.flow-phase').forEach(phase => {
+    if (type === 'all' || phase.dataset.flow === type) {
+      phase.style.display = 'block';
+    } else {
+      phase.style.display = 'none';
+    }
+  });
+}
+
+// Draw arrows between nodes
+function drawArrows() {
+  const svg = document.getElementById('arrows-svg');
+  const diagram = document.getElementById('main-diagram');
+  if (!svg || !diagram) return;
+
+  const rect = diagram.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${diagram.offsetWidth} ${diagram.offsetHeight}`);
+
+  const arrows = [
+    // Sources → HubSpot
+    { from: 'n-crunchbase', to: 'n-hubspot', color: '#ff7a45', label: 'Zapier' },
+    { from: 'n-apollo-prospect', to: 'n-hubspot', color: '#7aff45', label: 'New leads' },
+    { from: 'n-linkedin-src', to: 'n-hubspot', color: '#45a0ff', label: 'CSV import' },
+    // HubSpot ↔ Enrichment
+    { from: 'n-hubspot', to: 'n-apollo-enrich', color: '#2e4a2e', label: 'Contacts to enrich' },
+    { from: 'n-apollo-enrich', to: 'n-hubspot', color: '#2e4a2e', label: 'Enriched data back', offsetY: 20 },
+    // HubSpot → Outreach
+    { from: 'n-hubspot', to: 'n-apollo-seq', color: '#ff4545', label: 'Leads to sequence' },
+    { from: 'n-hubspot', to: 'n-lemlist', color: '#ff45d4', label: 'Leads to campaign' },
+    { from: 'n-hubspot', to: 'n-linkedin-out', color: '#45a0ff', label: 'Leads to DM' },
+    // Outreach → OpenClaw
+    { from: 'n-apollo-seq', to: 'n-openclaw', color: '#7c6ef0', label: 'Events' },
+    { from: 'n-lemlist', to: 'n-openclaw', color: '#7c6ef0', label: 'Events' },
+    { from: 'n-linkedin-out', to: 'n-openclaw', color: '#7c6ef0', label: 'Manual/CSV' },
+    // OpenClaw → HubSpot (sync back)
+    { from: 'n-openclaw', to: 'n-hubspot', color: '#7c6ef0', label: 'Sync statuses + tasks', offsetX: -60 },
+    // OpenClaw → Actions
+    { from: 'n-openclaw', to: 'n-reply', color: '#fbbf24', label: '' },
+    { from: 'n-reply', to: 'n-manual', color: '#fbbf24', label: '' },
+    { from: 'n-manual', to: 'n-booked', color: '#4ade80', label: '' },
+  ];
+
+  let html = '<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#666"/></marker></defs>';
+
+  arrows.forEach(a => {
+    const fromEl = document.getElementById(a.from);
+    const toEl = document.getElementById(a.to);
+    if (!fromEl || !toEl) return;
+
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const dRect = diagram.getBoundingClientRect();
+
+    let x1 = fromRect.left - dRect.left + fromRect.width / 2 + (a.offsetX || 0);
+    let y1 = fromRect.top - dRect.top + fromRect.height;
+    let x2 = toRect.left - dRect.left + toRect.width / 2 + (a.offsetX || 0);
+    let y2 = toRect.top - dRect.top;
+
+    if (a.offsetY) { y1 += a.offsetY; y2 += a.offsetY; }
+
+    const midY = (y1 + y2) / 2;
+
+    html += `<path class="arrow-path" d="M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}" stroke="${a.color}" marker-end="url(#arrowhead)"/>`;
+
+    if (a.label) {
+      const lx = (x1 + x2) / 2 + 10;
+      const ly = midY - 4;
+      html += `<text class="arrow-label" x="${lx}" y="${ly}">${a.label}</text>`;
+    }
+  });
+
+  svg.innerHTML = html;
+}
+
+// Initial draw
+window.addEventListener('load', () => setTimeout(drawArrows, 100));
+window.addEventListener('resize', () => setTimeout(drawArrows, 50));
+</script>
+
+</body>
+</html>
