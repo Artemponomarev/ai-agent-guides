@@ -416,6 +416,71 @@ flowchart TD
 
 ---
 
+## Existing Apollo ↔ HubSpot Sync (Already Configured)
+
+### Enrichment jobs (running daily)
+
+| Job Name | Source | Object | Enrichment | Limit |
+|----------|--------|--------|------------|-------|
+| Enrich Contacts Missing Emails | Apollo-source | Contact | Missing emails | 999/day |
+| Job Enrichment Schedule | Waterfall-source | Contact | Job changes | 999/day |
+
+### Contact field mapping (18 fields)
+
+| Apollo Field | HubSpot Field | Direction |
+|-------------|---------------|-----------|
+| First name | First Name | ↔ |
+| Last name | Last Name | ↔ |
+| Current job | Job Title | ↔ |
+| Default number | Phone Number | ↔ |
+| Mobile number | Mobile Phone Number | ↔ |
+| Primary email | Email | ↔ |
+| City | City | ↔ |
+| State | State/Region | ↔ |
+| Country | Country/Region | ↔ |
+| LinkedIn URL | LinkedIn URL | ↔ |
+| Score | Contact score | ↔ |
+| Owner | Contact owner | ↔ |
+| Last added sequence name | Last added sequence name | ↔ |
+| Last added sequence completed s… | Last added sequence completed s… | ↔ |
+| Company Name | Company Name | → |
+| Industry | Industry | → |
+| List Name | List Name | → |
+| Secondary email (1) | Secondary email | → |
+
+### Account field mapping (24 fields)
+
+| Apollo Field | HubSpot Field | Direction |
+|-------------|---------------|-----------|
+| Name | Company name | → |
+| Website URL | Website URL | → |
+| Domain | Company Domain Name | → |
+| Description | Description | → |
+| Primary industry | Industry | → |
+| Secondary industries | Industry group | → |
+| Number of employees | Number of Employees | → |
+| Phone number | Phone Number | → |
+| Street address | Street Address | → |
+| City | City | → |
+| State | State/Region | → |
+| Country | Country/Region | → |
+| Postal code | Postal Code | → |
+| LinkedIn URL | LinkedIn Company Page | → |
+| Total funding amount | Total Money Raised | → |
+| Latest funding stage | Last funding type | → |
+| Latest funding date | Last funding date | → |
+| Revenue | Annual Revenue | → |
+| Technologies | Technologies | → |
+| Founded year | Year Founded | → |
+| Number of job postings | Number of jobs postings | → |
+| Score | Company score | ↔ |
+| Owner | Company owner | ↔ |
+| Record creation source | Record creation source | ← |
+
+> **Note:** Key fields already syncing: `Last added sequence name` and `Last added sequence completed s…` — these are critical for Job A to detect sequence progress without extra API calls.
+
+---
+
 ## HubSpot Custom Properties
 
 ### Contact properties
@@ -503,11 +568,12 @@ For a lead "John Smith" in an 8-step sequence, after step 5:
 | Workflows | **NOT available (Pro+)** |
 | Tasks / Deals | Unlimited |
 
-### Apollo Basic
+### Apollo Basic ($49/mo)
 
 | Limit | Value |
 |-------|-------|
-| API rate limit | **5 requests / min** |
+| API rate limit | **1,000 requests / min** |
+| Credits | 30,000 / user / year |
 | Sequences | Available |
 | Sequence API | Read + add/remove contacts |
 | Webhooks | **NOT available (requires Pro)** |
@@ -530,4 +596,4 @@ For a lead "John Smith" in an 8-step sequence, after step 5:
 
 ---
 
-> **Key Bottleneck:** Apollo Basic = 5 API requests/min. Task mirroring (Job G) runs once per lead so it's fine. The recurring sync (Job A) is the bottleneck — design for batching and caching. If you scale beyond ~500 active leads, upgrade Apollo for higher limits.
+> **Rate limits are generous.** Apollo Basic = 1,000 req/min, HubSpot = 100 req/10s (≈600/min). No batching tricks needed. The only constraint is Apollo credits (30k/year) — each enrichment burns 1 credit, so plan enrichment wisely.
