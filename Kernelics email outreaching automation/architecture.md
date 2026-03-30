@@ -6,69 +6,74 @@
 
 ## System Overview
 
+### 1. Lead Sources → HubSpot
+
 ```mermaid
-flowchart TB
-    subgraph SOURCES["Lead Sources"]
-        CB["CrunchBase\nCompany accounts"]
-        AP["Apollo Prospecting\nNew leads + intent signals"]
-        LI["Sales Navigator\nLinkedIn lead lists"]
-    end
-
-    subgraph HUB["Source of Truth"]
-        HS["HubSpot CRM\nStarter Plan\nContacts • Deals • Tasks"]
-    end
-
-    subgraph ENRICH["Enrichment"]
-        AE["Apollo Enrichment\nEmails • Phones • Company data"]
-    end
-
-    subgraph OUTREACH["Outreach Channels"]
-        AS["Apollo Sequences\nEmail automation"]
-        LM["Lemlist\nMultichannel sequences"]
-        LO["LinkedIn Outreach\nDMs + InMails"]
-    end
-
-    subgraph ORCH["Orchestrator"]
-        OC["OpenClaw Bot\nSync engine + coordinator"]
-    end
-
-    subgraph OUTCOMES["Outcomes"]
-        RE["Reply Detected\nAny channel"]
-        MF["Manual Follow-up\nYou handle personally"]
-        MB["Meeting Booked\nPipeline advancement"]
-    end
-
-    CB -->|"Zapier"| HS
-    AP -->|"New leads"| HS
-    LI -->|"CSV import"| HS
-
-    HS <-->|"Contacts to enrich / Enriched data back"| AE
-
-    HS -->|"Leads to sequence"| AS
-    HS -->|"Leads to campaign"| LM
-    HS -->|"Leads to DM"| LO
-
-    AS -->|"Events"| OC
-    LM -->|"Events"| OC
-    LO -->|"Manual/CSV"| OC
-
-    OC -->|"Sync statuses + tasks"| HS
-    OC -->|"Pause sequences"| AS
-    OC -->|"Pause campaigns"| LM
-
-    OC --> RE
-    RE --> MF
-    MF --> MB
+flowchart TD
+    CB[CrunchBase] -->|Zapier| HS
+    AP[Apollo Prospecting] -->|New leads| HS
+    LI[Sales Navigator] -->|CSV import| HS
+    HS[HubSpot CRM - SOURCE OF TRUTH]
 
     style HS fill:#1e1e3a,stroke:#ff7a45,stroke-width:3px,color:#fff
-    style OC fill:#1a1a3e,stroke:#7c6ef0,stroke-width:3px,color:#fff
     style CB fill:#1a1a2e,stroke:#2a2a4e,color:#fff
     style AP fill:#1a1a2e,stroke:#2a2a4e,color:#fff
     style LI fill:#1a1a2e,stroke:#2a2a4e,color:#fff
+```
+
+### 2. Enrichment Loop
+
+```mermaid
+flowchart LR
+    HS[HubSpot] -->|Contacts| AE[Apollo Enrichment]
+    AE -->|Emails, phones, data| HS
+
+    style HS fill:#1e1e3a,stroke:#ff7a45,stroke-width:3px,color:#fff
     style AE fill:#1a2e1a,stroke:#2e4a2e,color:#fff
+```
+
+### 3. Outreach Channels
+
+```mermaid
+flowchart TD
+    HS[HubSpot] --> AS[Apollo Sequences]
+    HS --> LM[Lemlist Campaigns]
+    HS --> LO[LinkedIn DMs]
+
+    style HS fill:#1e1e3a,stroke:#ff7a45,stroke-width:3px,color:#fff
     style AS fill:#2e1a1a,stroke:#4a2e2e,color:#fff
     style LM fill:#2e1a1a,stroke:#4a2e2e,color:#fff
     style LO fill:#2e1a1a,stroke:#4a2e2e,color:#fff
+```
+
+### 4. OpenClaw Orchestration
+
+```mermaid
+flowchart TD
+    AS[Apollo] -->|Events| OC
+    LM[Lemlist] -->|Events| OC
+    LO[LinkedIn] -->|Manual/CSV| OC
+    OC[OpenClaw Bot - ORCHESTRATOR]
+    OC -->|Sync statuses + tasks| HS[HubSpot]
+    OC -->|Pause sequences| AS
+    OC -->|Pause campaigns| LM
+
+    style OC fill:#1a1a3e,stroke:#7c6ef0,stroke-width:3px,color:#fff
+    style HS fill:#1e1e3a,stroke:#ff7a45,stroke-width:3px,color:#fff
+    style AS fill:#2e1a1a,stroke:#4a2e2e,color:#fff
+    style LM fill:#2e1a1a,stroke:#4a2e2e,color:#fff
+    style LO fill:#2e1a1a,stroke:#4a2e2e,color:#fff
+```
+
+### 5. Outcomes
+
+```mermaid
+flowchart LR
+    OC[OpenClaw] --> RE[Reply Detected]
+    RE --> MF[Manual Follow-up]
+    MF --> MB[Meeting Booked]
+
+    style OC fill:#1a1a3e,stroke:#7c6ef0,stroke-width:3px,color:#fff
     style RE fill:#2e2e1a,stroke:#4a4a2e,color:#fff
     style MF fill:#2e2e1a,stroke:#4a4a2e,color:#fff
     style MB fill:#2e2e1a,stroke:#4a4a2e,color:#fff
@@ -78,32 +83,44 @@ flowchart TB
 
 ## OpenClaw Jobs
 
+### Scheduled Jobs (cron)
+
 ```mermaid
-flowchart LR
-    subgraph SCHEDULED["Scheduled Jobs (cron)"]
-        A["Job A\napollo-hubspot-sync\nEvery 15 min"]
-        B["Job B\nlemlist-hubspot-sync\nEvery 15 min"]
-        F["Job F\nlinkedin-manual-sync\nDaily"]
-    end
-
-    subgraph EVENT["Event-Triggered Jobs"]
-        C["Job C\ncross-channel-coordinator\nOn reply detected"]
-        D["Job D\nhubspot-task-creator\nOn reply confirmed"]
-        E["Job E\ndedup-guard\nBefore sequence add"]
-    end
-
-    A -->|"reply detected"| C
-    B -->|"reply detected"| C
-    F -->|"reply detected"| C
-    C -->|"after cleanup"| D
+flowchart TD
+    A[Job A: apollo-hubspot-sync] -->|reply?| C
+    B[Job B: lemlist-hubspot-sync] -->|reply?| C
+    F[Job F: linkedin-manual-sync] -->|reply?| C
+    C[Job C: cross-channel-coordinator]
+    C -->|after cleanup| D[Job D: task-creator]
 
     style A fill:#1a2e1a,stroke:#4ade80,color:#fff
     style B fill:#2e1a2a,stroke:#f472b6,color:#fff
     style C fill:#2e1a0a,stroke:#fb923c,color:#fff
     style D fill:#0a1a2e,stroke:#60a5fa,color:#fff
-    style E fill:#1a1a2e,stroke:#a78bfa,color:#fff
     style F fill:#1a2e2a,stroke:#34d399,color:#fff
 ```
+
+### Pre-hook Job
+
+```mermaid
+flowchart LR
+    NEW[New lead] -->|before add| E[Job E: dedup-guard]
+    E -->|clean| OK[Add to sequence]
+    E -->|duplicate| BLOCK[Block + log]
+
+    style E fill:#1a1a2e,stroke:#a78bfa,color:#fff
+    style OK fill:#1a2e1a,stroke:#4ade80,color:#fff
+    style BLOCK fill:#2e1a1a,stroke:#ff4545,color:#fff
+```
+
+| Job | Type | Schedule | Description |
+|-----|------|----------|-------------|
+| A | Cron | Every 15 min | Apollo → HubSpot status sync |
+| B | Cron | Every 15 min | Lemlist → HubSpot status sync |
+| C | Event | On reply | Pause all other channels for lead |
+| D | Event | After C | Create HubSpot task for you |
+| E | Pre-hook | Before add | Block duplicates across tools |
+| F | Cron | Daily | LinkedIn CSV → HubSpot sync |
 
 ---
 
@@ -147,24 +164,21 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    R["Reply detected\non ANY channel"] --> CHECK["Check HubSpot:\nactive_tools for this lead"]
-    CHECK --> APOLLO{"Active in\nApollo?"}
-    CHECK --> LEMLIST{"Active in\nLemlist?"}
-    CHECK --> LINKEDIN{"Active on\nLinkedIn?"}
-
-    APOLLO -->|"Yes"| PAUSE_A["Remove from Apollo sequence\nPOST remove_contact_ids"]
-    LEMLIST -->|"Yes"| PAUSE_L["Remove from Lemlist campaign\nDELETE /api/campaigns/{id}/leads/{email}"]
-    LINKEDIN -->|"Yes"| FLAG_LI["Flag for manual pause\n(no API)"]
-
-    PAUSE_A --> UPDATE["Update HubSpot:\nreply_status = replied\nactive_tools = cleared"]
-    PAUSE_L --> UPDATE
-    FLAG_LI --> UPDATE
-
-    UPDATE --> TASKD["Trigger Job D\nTask creation"]
+    R[Reply detected] --> CHECK[Check active_tools]
+    CHECK --> A{Apollo?}
+    CHECK --> L{Lemlist?}
+    CHECK --> LI{LinkedIn?}
+    A -->|Yes| PA[Remove from sequence]
+    L -->|Yes| PL[Remove from campaign]
+    LI -->|Yes| FL[Flag manual pause]
+    PA --> UP[Update HubSpot]
+    PL --> UP
+    FL --> UP
+    UP --> TD[Trigger Job D]
 
     style R fill:#2e1a1a,stroke:#ff4545,color:#fff
-    style UPDATE fill:#1e1e3a,stroke:#ff7a45,color:#fff
-    style TASKD fill:#0a1a2e,stroke:#60a5fa,color:#fff
+    style UP fill:#1e1e3a,stroke:#ff7a45,color:#fff
+    style TD fill:#0a1a2e,stroke:#60a5fa,color:#fff
 ```
 
 **Critical:** This prevents the "already in contact but still getting automated emails" problem
@@ -195,21 +209,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    NEW["New lead about to be\nadded to sequence"] --> QUERY["Query HubSpot:\ndoes this email exist?"]
-    QUERY --> EXISTS{"Exists in\nHubSpot?"}
+    NEW[New lead] --> Q{In HubSpot?}
+    Q -->|No| OK[APPROVE]
+    Q -->|Yes| ACT{Active tools?}
+    ACT -->|Yes| BL1[BLOCK: in sequence]
+    ACT -->|No| REP{Replied?}
+    REP -->|Yes| BL2[BLOCK: already replied]
+    REP -->|No| OK
 
-    EXISTS -->|"No"| APPROVE["APPROVE\nAdd to sequence\nUpdate active_tools"]
-    EXISTS -->|"Yes"| CHECK_ACTIVE{"active_tools\nnot empty?"}
-
-    CHECK_ACTIVE -->|"Yes"| BLOCK["BLOCK\nAlready in active sequence\nLog warning"]
-    CHECK_ACTIVE -->|"No"| CHECK_REPLY{"reply_status\n!= no_reply?"}
-
-    CHECK_REPLY -->|"Yes"| BLOCK2["BLOCK\nAlready replied\nLog warning"]
-    CHECK_REPLY -->|"No"| APPROVE
-
-    style BLOCK fill:#2e1a1a,stroke:#ff4545,color:#fff
-    style BLOCK2 fill:#2e1a1a,stroke:#ff4545,color:#fff
-    style APPROVE fill:#1a2e1a,stroke:#4ade80,color:#fff
+    style BL1 fill:#2e1a1a,stroke:#ff4545,color:#fff
+    style BL2 fill:#2e1a1a,stroke:#ff4545,color:#fff
+    style OK fill:#1a2e1a,stroke:#4ade80,color:#fff
 ```
 
 **Prevents:** Same lead getting emails from Apollo AND Lemlist simultaneously
