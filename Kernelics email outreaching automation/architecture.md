@@ -127,73 +127,105 @@ flowchart TD
     style MARK fill:#1a2e1a,stroke:#4ade80,color:#fff
 ```
 
-### Task states in HubSpot
+### Task types and statuses in HubSpot (actual values)
 
-| HubSpot Task Status | Meaning |
-|---------------------|---------|
-| `NOT_STARTED` | Step not yet executed in source tool |
-| `COMPLETED` | Step executed (email sent, LinkedIn action done) |
-| `DEFERRED` | Paused due to reply on another channel |
+**Task types** (use `hs_task_type`):
+
+| API Value | Label | Used For |
+|-----------|-------|----------|
+| `EMAIL` | Email | Apollo/Lemlist email steps |
+| `LINKED_IN` | LinkedIn | LinkedIn engagement (like, comment) |
+| `LINKED_IN_CONNECT` | Sales Navigator - Connection Request | LinkedIn connection requests |
+| `LINKED_IN_MESSAGE` | Sales Navigator - InMail | LinkedIn DMs and InMails |
+| `CALL` | Call | Phone call steps |
+| `TODO` | To Do | Follow-up tasks, manual actions |
+
+**Task statuses** (use `hs_task_status`):
+
+| API Value | Label | Meaning |
+|-----------|-------|---------|
+| `NOT_STARTED` | Not Started | Step not yet executed |
+| `IN_PROGRESS` | In Progress | Step currently being processed |
+| `COMPLETED` | Completed | Step executed (email sent, action done) |
+| `DEFERRED` | Deferred | Paused — lead replied on another channel |
+| `WAITING` | Waiting | Waiting for external event (e.g. wait step) |
 
 ---
 
 ## Automatic Lead Status Management
 
+Uses HubSpot's built-in `hs_lead_status` field. Your current options and how we map them:
+
+### Status mapping (hs_lead_status)
+
+| HubSpot Value | API Value | Our Usage | Automation Trigger |
+|--------------|-----------|-----------|-------------------|
+| **New** | `NEW` | Lead just entered HubSpot, not yet in any sequence | Default on import |
+| **Open** | `OPEN` | Lead added to a sequence, outreach in progress | Job G: on sequence start |
+| **Connected** | `CONNECTED` | Steps 1-3 completed, no reply yet | Job A/B: step count check |
+| **Open Hot** | `Open Hot` | Reply received (positive or neutral) — needs attention | Job C: on positive/neutral reply |
+| **Opted Out** | `Opted Out` | Reply was negative ("not interested", "unsubscribe") | Job C: on negative reply |
+| **Unqualified** | `UNQUALIFIED` | Lead doesn't match ICP after review | Manual |
+| **Hold** | `Hold` | All sequence steps done, no reply — wait 30 days | Job A/B: all steps completed |
+| **Inactive** | `Inactive` | 30+ days on hold, no engagement — can re-sequence later | Job A: timer expiry |
+
+> No custom status values needed. The built-in options cover every state.
+
 ### Status flow diagram
 
 ```mermaid
 flowchart TD
-    NEW[New Lead] --> SEQ[In Sequence]
+    NEW[NEW] --> SEQ[OPEN]
     SEQ --> P1{Steps 1-3 done?}
-    P1 -->|Yes, no reply| WARM[Contacted]
-    P1 -->|Reply positive| ENG[Engaged]
-    P1 -->|Reply negative| REJ[Rejected]
-    WARM --> P2{Steps 4-6 done?}
-    P2 -->|Yes, no reply| ACTIVE[Active Outreach]
-    P2 -->|Reply positive| ENG
-    P2 -->|Reply negative| REJ
-    ACTIVE --> P3{All steps done?}
-    P3 -->|Yes, no reply| HOLD[On Hold]
-    P3 -->|Reply positive| ENG
-    P3 -->|Reply negative| REJ
-    ENG --> MTG{Meeting booked?}
-    MTG -->|Yes| BOOKED[Meeting Booked]
-    MTG -->|No| FOLLOW[Manual Follow-up]
+    P1 -->|Yes, no reply| CONN[CONNECTED]
+    P1 -->|Reply +/neutral| HOT[OPEN HOT]
+    P1 -->|Reply negative| OUT[OPTED OUT]
+    CONN --> P2{Steps 4+ done?}
+    P2 -->|No reply| CONN
+    P2 -->|Reply +/neutral| HOT
+    P2 -->|Reply negative| OUT
+    CONN --> P3{All steps done?}
+    P3 -->|No reply| HOLD[HOLD]
+    HOT --> MTG{Meeting booked?}
+    MTG -->|Yes| DEAL[Deal: Appointment]
+    MTG -->|No| FOLLOW[Manual follow-up]
+    HOLD -->|30 days| INACT[INACTIVE]
+    INACT -->|Re-sequence| OPEN2[OPEN again]
 
     style NEW fill:#1a1a2e,stroke:#2a2a4e,color:#fff
     style SEQ fill:#1a1a2e,stroke:#7c6ef0,color:#fff
-    style WARM fill:#2e2e1a,stroke:#fbbf24,color:#fff
-    style ACTIVE fill:#2e1a0a,stroke:#fb923c,color:#fff
+    style CONN fill:#2e2e1a,stroke:#fbbf24,color:#fff
+    style HOT fill:#1a2e1a,stroke:#4ade80,color:#fff
+    style OUT fill:#2e1a1a,stroke:#ff4545,color:#fff
     style HOLD fill:#1a1a2e,stroke:#666,color:#aaa
-    style ENG fill:#1a2e1a,stroke:#4ade80,color:#fff
-    style REJ fill:#2e1a1a,stroke:#ff4545,color:#fff
-    style BOOKED fill:#1a2e1a,stroke:#4ade80,color:#fff
+    style INACT fill:#1a1a2e,stroke:#444,color:#888
+    style DEAL fill:#1a2e1a,stroke:#4ade80,color:#fff
     style FOLLOW fill:#2e2e1a,stroke:#fbbf24,color:#fff
 ```
 
 ### Status rules (what OpenClaw enforces)
 
-| Trigger | New Status | Actions |
-|---------|-----------|---------|
-| Lead added to sequence | `in_sequence` | Create all HubSpot tasks for this lead |
-| Steps 1-3 completed, no reply | `contacted` | Update deal stage |
-| Steps 4-6 completed, no reply | `active_outreach` | Update deal stage |
-| ALL steps completed, no reply | `on_hold` | Move deal to "Hold", stop monitoring |
-| Reply — positive (any step) | `engaged` | Pause all sequences, create follow-up task, move deal to "Engaged" |
-| Reply — negative (any step) | `rejected` | Pause all sequences, move deal to "Lost", log reason |
-| Reply — neutral/unclear (any step) | `needs_review` | Pause all sequences, create task: "Review reply from {name}" |
-| Meeting booked | `meeting_booked` | Remove from ALL sequences, move deal to "Meeting Booked" |
-| No reply after hold period (30 days) | `cold` | Can be re-added to a different sequence later |
+| Trigger | hs_lead_status | API Value | Additional Actions |
+|---------|---------------|-----------|-------------------|
+| Lead added to sequence | Open | `OPEN` | Create all HubSpot tasks |
+| Steps 1-3 completed, no reply | Connected | `CONNECTED` | — |
+| ALL steps completed, no reply | Hold | `Hold` | Stop monitoring |
+| Reply — positive (any step) | Open Hot | `Open Hot` | Pause all sequences, create follow-up task |
+| Reply — neutral/OOO (any step) | Open Hot | `Open Hot` | Pause all sequences, create review task |
+| Reply — negative (any step) | Opted Out | `Opted Out` | Pause all sequences, move deal to Closed Lost |
+| Meeting booked | — | — | Remove from sequences, deal → Appointment Scheduled |
+| 30 days on Hold, no engagement | Inactive | `Inactive` | Can be re-added to different sequence |
+| Manual review: doesn't match ICP | Unqualified | `UNQUALIFIED` | Remove from sequences |
 
 ### Reply sentiment detection
 
 OpenClaw classifies replies into 3 categories:
 
-| Category | Example phrases | Status |
-|----------|----------------|--------|
-| **Positive** | "Sure, let's talk", "Send more info", "When are you free?" | `engaged` |
-| **Negative** | "Not interested", "Remove me", "Don't contact me" | `rejected` |
-| **Neutral** | "Who are you?", "What company?", auto-replies, OOO | `needs_review` |
+| Category | Example phrases | → hs_lead_status |
+|----------|----------------|-----------------|
+| **Positive** | "Sure, let's talk", "Send more info", "When are you free?" | `Open Hot` |
+| **Negative** | "Not interested", "Remove me", "Don't contact me" | `Opted Out` |
+| **Neutral** | "Who are you?", "What company?", auto-replies, OOO | `Open Hot` + review task |
 
 ---
 
@@ -252,7 +284,7 @@ flowchart TD
 | | Status: NOT_STARTED | |
 | | Due date: expected execution date | |
 | 4 | Associate all tasks with contact + deal | `PUT /crm/v3/objects/tasks/{id}/associations/...` |
-| 5 | Set lead status to `in_sequence` | `PATCH /crm/v3/objects/contacts/{id}` |
+| 5 | Set `hs_lead_status` to `OPEN` | `PATCH /crm/v3/objects/contacts/{id}` |
 | 6 | Set `total_steps` and `completed_steps = 0` | (same PATCH) |
 
 **Result:** All 8 tasks (or however many) appear in HubSpot immediately. You can see the full plan for every lead.
@@ -277,9 +309,8 @@ flowchart TD
 
 | Condition | Action |
 |-----------|--------|
-| `completed_steps` reaches 3 and no reply | Set status → `contacted` |
-| `completed_steps` reaches 6 and no reply | Set status → `active_outreach` |
-| `completed_steps` equals `total_steps` and no reply | Set status → `on_hold` |
+| `completed_steps` reaches 3 and no reply | Set `hs_lead_status` → `CONNECTED` |
+| `completed_steps` equals `total_steps` and no reply | Set `hs_lead_status` → `Hold` |
 | Reply detected | Classify sentiment → trigger Job C |
 
 ---
@@ -366,11 +397,11 @@ When a lead replies at step 5 of an 8-step sequence:
 flowchart TD
     NEW[New lead] --> Q{In HubSpot?}
     Q -->|No| OK[APPROVE]
-    Q -->|Yes| ACT{Active tools?}
+    Q -->|Yes| ACT{Status = OPEN?}
     ACT -->|Yes| BL1[BLOCK: in sequence]
     ACT -->|No| REP{Status?}
-    REP -->|rejected/on_hold| BL2[BLOCK]
-    REP -->|cold/none| OK
+    REP -->|Opted Out / Hold| BL2[BLOCK]
+    REP -->|Inactive / NEW| OK
 
     style BL1 fill:#2e1a1a,stroke:#ff4545,color:#fff
     style BL2 fill:#2e1a1a,stroke:#ff4545,color:#fff
@@ -481,40 +512,60 @@ flowchart TD
 
 ---
 
-## HubSpot Custom Properties
+## HubSpot Properties & Pipelines (Actual Setup)
 
-### Contact properties
+### Existing properties we USE (no changes needed)
 
-| Property Name | Type | Options / Format | Purpose |
-|--------------|------|-----------------|---------|
-| `lead_status` | Dropdown | in_sequence / contacted / active_outreach / on_hold / engaged / rejected / needs_review / meeting_booked / cold | Current status |
-| `outreach_channel` | Dropdown | email / linkedin / both / none | Active channels |
-| `total_steps` | Number | e.g. 8 | Total steps in current sequence |
-| `completed_steps` | Number | e.g. 5 | Steps completed so far |
-| `current_step` | Number | e.g. 6 | Next step to be executed |
-| `reply_status` | Dropdown | no_reply / replied_positive / replied_negative / replied_neutral | Reply classification |
-| `reply_channel` | Dropdown | apollo_email / lemlist_email / linkedin_dm / inmail | Where reply came from |
-| `reply_step` | Number | e.g. 5 | At which step they replied |
-| `active_tools` | Text | apollo,lemlist,linkedin (comma-separated) | Tools with active sequences |
-| `last_sync_timestamp` | DateTime | ISO 8601 | Last OpenClaw sync |
-| `apollo_campaign_id` | Text | Campaign ID | Link to Apollo sequence |
-| `lemlist_campaign_id` | Text | Campaign ID | Link to Lemlist campaign |
-| `intent_score` | Number | 1-100 | Apollo buying intent score |
+| Property | API Name | Already Exists | Used By |
+|----------|----------|---------------|---------|
+| Lead Status | `hs_lead_status` | Yes (8 options) | Status automation |
+| Lifecycle Stage | `lifecyclestage` | Yes | Default HubSpot |
+| Contact Score | `contact_score` | Yes (custom) | Apollo score sync |
+| Contact Type | `contact_type` | Yes (custom) | Prospects / Current Clients / etc. |
+| Lead Source | `lead_source` | Yes (custom) | Apollo / Referral / LinkedIn / etc. |
+| Last Sequence Name | `last_added_sequence_name` | Yes (Apollo sync) | Job A: track active sequence |
+| Sequence Step | `last_added_sequence_completed_step` | Yes (Apollo sync) | Job A: track progress |
+| LinkedIn URL | `linkedin_url` | Yes | LinkedIn matching |
 
-### Deal stages (pipeline)
+### Custom properties TO CREATE
 
-| Stage | Probability | Triggered by |
-|-------|------------|-------------|
-| New Lead | 10% | Lead added to HubSpot |
-| In Sequence | 15% | Lead added to first sequence |
-| Contacted | 20% | Steps 1-3 completed, no reply |
-| Active Outreach | 30% | Steps 4-6 completed, no reply |
-| Engaged | 50% | Positive or neutral reply |
-| Meeting Booked | 70% | Meeting scheduled |
-| On Hold | 5% | All steps completed, no reply |
-| Rejected | 0% | Negative reply |
-| Closed Won | 100% | Deal closed |
-| Closed Lost | 0% | Deal lost |
+| Property Name | Internal Name | Type | Purpose |
+|--------------|--------------|------|---------|
+| Total Steps | `total_steps` | Number | Total steps in current sequence |
+| Completed Steps | `completed_steps` | Number | Steps completed so far |
+| Current Step | `current_step` | Number | Next step to be executed |
+| Reply Sentiment | `reply_sentiment` | Dropdown: `positive / negative / neutral / none` | AI-classified reply type |
+| Reply Channel | `reply_channel` | Dropdown: `apollo_email / lemlist_email / linkedin_dm / inmail` | Where reply came from |
+| Reply Step | `reply_step` | Number | At which step they replied |
+| Active Tools | `active_tools` | Text | Comma-separated: apollo,lemlist,linkedin |
+| Apollo Campaign ID | `apollo_campaign_id` | Text | Link to Apollo sequence |
+| Lemlist Campaign ID | `lemlist_campaign_id` | Text | Link to Lemlist campaign |
+| Last Sync | `openclaw_last_sync` | DateTime | Last OpenClaw sync timestamp |
+
+### Deal pipelines (actual — from HubSpot)
+
+**Sales Pipeline** (default) — for outreach-to-close:
+
+| Order | Stage | API ID | Probability | OpenClaw Trigger |
+|-------|-------|--------|------------|-----------------|
+| 0 | Appointment Scheduled | `appointmentscheduled` | 20% | Meeting booked → lead status stays `Open Hot` |
+| 1 | Qualified To Buy | `qualifiedtobuy` | 40% | Manual after discovery call |
+| 2 | Prices Sent | `presentationscheduled` | 60% | Manual after proposal |
+| 3 | Approved | `decisionmakerboughtin` | 80% | Manual |
+| 4 | Contract Sent | `contractsent` | 90% | Manual |
+| 5 | Closed Won | `closedwon` | 100% | Manual |
+| 6 | Closed Lost | `closedlost` | 0% | Job C: on negative reply (auto) or manual |
+
+**Active Engagements** (id: 3660696809) — for active clients:
+
+| Order | Stage | API ID | Probability |
+|-------|-------|--------|------------|
+| 0 | Onboarding | `5043026129` | 60% |
+| 1 | Active | `5043026130` | 80% |
+| 2 | Winding Down | `5043026131` | 90% |
+| 3 | Completed | `5043026132` | 100% |
+
+> **Note:** No new pipeline needed. Outreach leads don't get a deal until "Appointment Scheduled". The lead status (`hs_lead_status`) tracks the entire outreach funnel. A deal is only created when a meeting is booked → `Appointment Scheduled` stage.
 
 ---
 
@@ -535,7 +586,7 @@ For a lead "John Smith" in an 8-step sequence, after step 5:
 | Step 7/8: Case study — John Smith | NOT_STARTED | Apr 1 | Apollo email |
 | Step 8/8: Breakup — John Smith | NOT_STARTED | Apr 5 | Apollo email |
 
-**Lead status:** `active_outreach` (5/8 steps done, no reply)
+**hs_lead_status:** `CONNECTED` (5/8 steps done, no reply)
 
 ### If John replies at step 5
 
@@ -551,7 +602,7 @@ For a lead "John Smith" in an 8-step sequence, after step 5:
 | Step 8/8: Breakup — John Smith | DEFERRED | ~~Apr 5~~ | Apollo email |
 | **REPLY: John Smith via email — positive** | **NOT_STARTED** | **Today** | **Manual** |
 
-**Lead status:** `engaged` (replied positive at step 5/8)
+**hs_lead_status:** `Open Hot` (replied positive at step 5/8)
 
 ---
 
@@ -597,3 +648,111 @@ For a lead "John Smith" in an 8-step sequence, after step 5:
 ---
 
 > **Rate limits are generous.** Apollo Basic = 1,000 req/min, HubSpot = 100 req/10s (≈600/min). No batching tricks needed. The only constraint is Apollo credits (30k/year) — each enrichment burns 1 credit, so plan enrichment wisely.
+
+---
+
+## Apollo Sequence Design (Recommended)
+
+You have 2 sequences created but not yet configured:
+- **"Outreach to Ideal Customer Personas"** — 0 steps, inactive
+- **"Win customers using other technologies"** — 0 steps, inactive
+
+### Recommended sequence structure
+
+**Sequence 1: "Outreach to Ideal Customer Personas"** — Main ICP outreach (8 steps, ~3 weeks)
+
+| Step | Day | Type | Action | HubSpot Task Type |
+|------|-----|------|--------|-------------------|
+| 1 | Day 1 | Email | Personalized intro — pain point + hypothesis | `EMAIL` |
+| 2 | Day 3 | LinkedIn | Send connection request | `LINKED_IN_CONNECT` |
+| 3 | Day 5 | Email | Follow-up — case study or social proof | `EMAIL` |
+| 4 | Day 7 | LinkedIn | Engage with their content (like/comment) | `LINKED_IN` |
+| 5 | Day 10 | Email | Value email — insight or resource relevant to them | `EMAIL` |
+| 6 | Day 13 | LinkedIn | Direct message — reference connection + value | `LINKED_IN_MESSAGE` |
+| 7 | Day 17 | Email | Case study email — specific results for similar company | `EMAIL` |
+| 8 | Day 21 | Email | Breakup email — last chance, soft close | `EMAIL` |
+
+**Sequence 2: "Win customers using other technologies"** — Displacement play (6 steps, ~2.5 weeks)
+
+| Step | Day | Type | Action | HubSpot Task Type |
+|------|-----|------|--------|-------------------|
+| 1 | Day 1 | Email | Intro — identify their current tech + pain | `EMAIL` |
+| 2 | Day 3 | LinkedIn | Connection request | `LINKED_IN_CONNECT` |
+| 3 | Day 6 | Email | Comparison — how you solve what their tech doesn't | `EMAIL` |
+| 4 | Day 9 | LinkedIn | Share relevant content about tech migration | `LINKED_IN` |
+| 5 | Day 13 | Email | Migration success story — similar company switched | `EMAIL` |
+| 6 | Day 18 | Email | Breakup — offer migration consultation | `EMAIL` |
+
+### How sequences connect to the architecture
+
+```mermaid
+flowchart TD
+    ICP[ICP List in HubSpot] -->|Filter: NEW status| SEL[Select leads]
+    SEL --> S1[Seq 1: ICP Outreach]
+    SEL --> S2[Seq 2: Tech Displacement]
+    S1 --> G[Job G: mirror steps → HubSpot]
+    S2 --> G
+    G --> TASKS[8 or 6 tasks per lead]
+    TASKS --> A[Job A: sync completions]
+    A --> STATUS[Auto-update hs_lead_status]
+
+    style ICP fill:#1e1e3a,stroke:#ff7a45,color:#fff
+    style G fill:#1a1a3e,stroke:#7c6ef0,color:#fff
+    style TASKS fill:#1e1e3a,stroke:#ff7a45,color:#fff
+    style A fill:#1a2e1a,stroke:#4ade80,color:#fff
+```
+
+### Apollo sequence API mapping
+
+Apollo sequences use the `emailer_campaigns` API. Key endpoints for OpenClaw:
+
+| Action | Endpoint | Method |
+|--------|----------|--------|
+| List all sequences | `/v1/emailer_campaigns` | GET |
+| Get sequence details + steps | `/v1/emailer_campaigns/{id}` | GET |
+| Get contacts in a sequence | `/v1/emailer_campaigns/{id}/emailer_touches` | GET |
+| Add contact to sequence | `/v1/emailer_campaigns/{id}/add_contact_ids` | POST |
+| Remove contact from sequence | `/v1/emailer_campaigns/{id}/remove_contact_ids` | POST |
+| Check step completion per contact | `/v1/emailer_campaigns/{id}/emailer_steps` | GET |
+
+### Sequence design tips
+
+1. **Multichannel spacing** — never do email + LinkedIn on same day, alternate channels
+2. **Wait days increase** — gaps get longer (2→3→4 days) to avoid looking desperate
+3. **LinkedIn before email** — connection request on Day 3 warms them up before follow-up emails
+4. **Breakup email works** — the "last email" approach drives 25-40% of all replies
+5. **Keep under 8 steps** — diminishing returns after step 7-8, and you burn send limits
+6. **Personalization tokens** — Apollo supports `{{first_name}}`, `{{company}}`, `{{title}}` etc.
+7. **A/B test subjects** — Apollo Basic supports A/B on email subjects, use it on step 1
+
+### Connecting Apollo sequences with Lemlist
+
+If you want to use Lemlist for some channels (especially LinkedIn automation on Expert plan):
+
+| Approach | How | Pros | Cons |
+|----------|-----|------|------|
+| **Apollo-only** | All steps in Apollo sequence | Simple, single tool | LinkedIn steps are manual reminders |
+| **Lemlist-only** | All steps in Lemlist campaign | Auto LinkedIn (Expert) | Separate from Apollo enrichment |
+| **Split by channel** | Email in Apollo, LinkedIn in Lemlist | Best of both | OpenClaw must coordinate timing |
+| **Recommended: Apollo + manual LinkedIn** | Apollo for emails, OpenClaw reminds LinkedIn | Simple, no Lemlist cost | LinkedIn requires manual action |
+
+> **Recommended for now:** Start with Apollo-only sequences. Email steps execute automatically, LinkedIn steps create manual tasks in HubSpot (via Job G). Once volume justifies it, add Lemlist Expert for LinkedIn automation.
+
+---
+
+## Existing Company Properties (Custom)
+
+| Property | Internal Name | Type | Source |
+|----------|--------------|------|--------|
+| Company Score | `company_score` | Number | Apollo sync |
+| Company Source | `company_source` | Dropdown | Referral/LinkedIn/Cold Email/Crunchbase/etc. |
+| CrunchBase Link | `crunchbase_link` | Text | Zapier import |
+| CrunchBase Source List | `crunchbase_source_list` | Text | Zapier import |
+| Enrichment Source | `enrichment_source` | Text | Apollo/Waterfall |
+| Industry Tags | `industry_tags` | Textarea | Apollo enrichment |
+| Last Funding Date | `last_funding_date` | Date | Apollo sync |
+| Last Funding Type | `last_funding_type` | Text | Apollo sync |
+| New Funding | `new_funding_or_investment` | Boolean | Manual/Zapier |
+| Job Postings | `number_of_jobs_postings` | Number | Apollo sync |
+| Social Engagement | `social_media___engagement` | Text | Manual |
+| Technologies | `technologies` | Textarea | Apollo sync |
